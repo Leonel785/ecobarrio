@@ -1,0 +1,1985 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>EcoBarrio - Reciclaje Vecinal Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- QR Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .pulse-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 3px;
+            background: #10b981;
+            animation: scan 2s linear infinite;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0;
+            }
+
+            100% {
+                top: 100%;
+            }
+        }
+
+        .tab-active {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .scanner-frame {
+            position: absolute;
+            inset: 12%;
+            border: 2px solid rgba(16, 185, 129, 0.7);
+            border-radius: 16px;
+            pointer-events: none;
+        }
+
+        .corner-marker {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border-color: #10b981;
+            border-style: solid;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            border-radius: 20px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .qr-result-box {
+            word-break: break-all;
+        }
+
+        .worker-badge {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .btn-shine {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-shine::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: rgba(255, 255, 255, 0.15);
+            transform: rotate(30deg);
+            transition: all 0.5s;
+        }
+
+        .btn-shine:hover::after {
+            transform: rotate(30deg) translate(20%, 20%);
+        }
+
+        /* Map styles */
+        #map {
+            height: 320px;
+            border-radius: 16px;
+            z-index: 1;
+        }
+
+        #map-worker {
+            height: 280px;
+            border-radius: 16px;
+            z-index: 1;
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+        }
+
+        .leaflet-popup-content {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            margin: 10px 14px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-dot.online {
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+        }
+
+        .status-dot.offline {
+            background: #ef4444;
+        }
+
+        .status-dot.loading {
+            background: #f59e0b;
+            animation: pulse 1s infinite;
+        }
+
+        .gps-card {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
+        .truck-control-card {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-white bg-opacity-20 rounded-full p-2.5">
+                        <i class="fas fa-leaf text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">EcoBarrio</h1>
+                        <p class="text-xs opacity-90">Reciclaje vecinal inteligente</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <div class="bg-white bg-opacity-20 rounded-full px-3 py-1.5 flex items-center">
+                        <i class="fas fa-star text-yellow-300 mr-1.5 text-sm"></i>
+                        <span class="text-xs font-medium">Eco-puntos:</span>
+                        <span id="header-points" class="text-lg font-bold ml-1">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6 max-w-lg">
+
+        <!-- Points Counter Card -->
+        <div class="bg-white rounded-2xl shadow-lg p-5 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-700">Tus Eco-puntos</h2>
+                    <p class="text-gray-500 text-xs">Acumulados por reciclar</p>
+                </div>
+                <div class="text-right">
+                    <div id="main-points" class="text-3xl font-bold text-green-600">0</div>
+                    <p class="text-green-600 text-xs font-medium">puntos</p>
+                </div>
+            </div>
+            <div class="mt-3 bg-gray-200 rounded-full h-2">
+                <div id="points-bar" class="gradient-bg h-2 rounded-full transition-all duration-500" style="width: 0%">
+                </div>
+            </div>
+            <p class="text-xs text-gray-400 mt-1 text-right">Meta: 1000 pts</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex space-x-1.5 mb-6 bg-white rounded-xl p-1.5 shadow-md overflow-x-auto">
+            <button onclick="switchTab('home')" id="tab-home"
+                class="tab-btn flex-1 py-2.5 px-2 rounded-lg font-medium text-sm transition-all tab-active whitespace-nowrap">
+                <i class="fas fa-home mr-1"></i>Inicio
+            </button>
+            <button onclick="switchTab('scan')" id="tab-scan"
+                class="tab-btn flex-1 py-2.5 px-2 rounded-lg font-medium text-sm transition-all text-gray-600 hover:bg-gray-100 whitespace-nowrap">
+                <i class="fas fa-camera mr-1"></i>Escanear
+            </button>
+            <button onclick="switchTab('rewards')" id="tab-rewards"
+                class="tab-btn flex-1 py-2.5 px-2 rounded-lg font-medium text-sm transition-all text-gray-600 hover:bg-gray-100 whitespace-nowrap">
+                <i class="fas fa-gift mr-1"></i>Beneficios
+            </button>
+            <button onclick="switchTab('worker')" id="tab-worker"
+                class="tab-btn flex-1 py-2.5 px-2 rounded-lg font-medium text-sm transition-all text-gray-600 hover:bg-gray-100 whitespace-nowrap">
+                <i class="fas fa-hard-hat mr-1"></i>Trabajador
+            </button>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: HOME (CON MAPA GPS REAL) -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-home" class="view-section fade-in">
+
+            <!-- GPS Status Card -->
+            <div class="gps-card rounded-2xl shadow-lg p-4 mb-5 text-white">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-location-arrow text-lg"></i>
+                        <h3 class="text-sm font-semibold">Tu Ubicación GPS</h3>
+                    </div>
+                    <div id="gps-status-badge"
+                        class="bg-white bg-opacity-20 rounded-full px-2.5 py-1 text-xs font-medium flex items-center">
+                        <span class="status-dot loading" id="gps-dot"></span>
+                        <span id="gps-text">Buscando...</span>
+                    </div>
+                </div>
+                <div class="bg-white bg-opacity-15 rounded-xl p-3">
+                    <p class="text-xs opacity-90 mb-1">Coordenadas / Dirección:</p>
+                    <p id="user-coords" class="font-mono text-sm">--</p>
+                    <p id="user-address" class="text-xs opacity-90 mt-1">Obteniendo dirección...</p>
+                </div>
+                <div class="flex space-x-2 mt-2">
+                    <button onclick="refreshLocation()"
+                        class="flex-1 bg-white bg-opacity-20 text-white py-2 px-3 rounded-xl font-medium text-xs hover:bg-opacity-30 transition-all">
+                        <i class="fas fa-sync-alt mr-1"></i>Reintentar GPS
+                    </button>
+                    <button onclick="showGPSPermissionHelp()"
+                        class="bg-white bg-opacity-20 text-white py-2 px-3 rounded-xl font-medium text-xs hover:bg-opacity-30 transition-all whitespace-nowrap">
+                        <i class="fas fa-question-circle mr-1"></i>¿Permiso bloqueado?
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mapa Real con Leaflet -->
+            <div class="bg-white rounded-2xl shadow-lg p-4 mb-5">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-base font-semibold text-gray-700 flex items-center">
+                        <i class="fas fa-map-marked-alt mr-2 text-green-600"></i>Mapa en Vivo
+                    </h3>
+                    <div class="flex items-center space-x-2">
+                        <span class="status-dot online" id="truck-status-dot"></span>
+                        <span class="text-xs text-gray-500" id="truck-status-text">Camión activo</span>
+                    </div>
+                </div>
+
+                <!-- Buscador de Dirección Manual -->
+                <div class="mb-3 flex space-x-2">
+                    <input type="text" id="address-search-input" placeholder="Buscar dirección o distrito..."
+                        onkeydown="if(event.key==='Enter') searchAddressOnMap()"
+                        class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <button onclick="searchAddressOnMap()"
+                        class="gradient-bg text-white px-3 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-all flex items-center whitespace-nowrap">
+                        <i class="fas fa-search mr-1"></i>Buscar
+                    </button>
+                </div>
+
+                <div id="map" class="shadow-inner border border-gray-200"></div>
+                <div class="mt-3 flex items-center justify-between text-xs text-gray-600">
+                    <div class="flex items-center space-x-1.5">
+                        <img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png"
+                            class="w-4 h-6 object-contain">
+                        <span>Tu ubicación</span>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png"
+                            class="w-4 h-6 object-contain">
+                        <span>Camión</span>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <div class="w-3 h-3 bg-blue-400 rounded-full opacity-50"></div>
+                        <span>Ruta</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Truck Info Card -->
+            <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-5 mb-5 text-white">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-base font-semibold">Estado del Camión Recolector</h3>
+                        <p class="text-blue-100 text-xs">Tu barrio: Zona Verde</p>
+                    </div>
+                    <div class="bg-white bg-opacity-20 rounded-full p-2.5">
+                        <i class="fas fa-truck text-xl pulse-animation"></i>
+                    </div>
+                </div>
+                <div class="bg-white bg-opacity-20 rounded-xl p-3 mb-3">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-white rounded-full p-2">
+                            <i class="fas fa-map-marker-alt text-blue-600 text-lg"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-semibold text-sm">El camión pasa por tu cuadra en</p>
+                            <p id="truck-eta" class="text-2xl font-bold">Calculando...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-white bg-opacity-15 rounded-lg p-2">
+                        <p class="opacity-80">Distancia</p>
+                        <p id="truck-distance" class="font-bold text-sm">-- km</p>
+                    </div>
+                    <div class="bg-white bg-opacity-15 rounded-lg p-2">
+                        <p class="opacity-80">Velocidad</p>
+                        <p id="truck-speed" class="font-bold text-sm">15 km/h</p>
+                    </div>
+                </div>
+                <button onclick="requestPickup()"
+                    class="w-full bg-white text-blue-600 py-2.5 px-4 rounded-xl font-bold hover:bg-blue-50 transition-all mt-3 text-sm">
+                    <i class="fas fa-bell mr-2"></i>Activar Recordatorio Comunitario
+                </button>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-white rounded-xl shadow-md p-4 card-hover">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-green-100 rounded-full p-2.5">
+                            <i class="fas fa-recycle text-green-600 text-lg"></i>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-gray-800">12</p>
+                            <p class="text-xs text-gray-600">Reciclajes</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-md p-4 card-hover">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-blue-100 rounded-full p-2.5">
+                            <i class="fas fa-award text-blue-600 text-lg"></i>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-gray-800">3</p>
+                            <p class="text-xs text-gray-600">Beneficios</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: SCAN QR (CÁMARA REAL) -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-scan" class="view-section hidden fade-in">
+            <div class="bg-white rounded-2xl shadow-lg p-5 mb-5">
+                <h3 class="text-lg font-semibold text-gray-700 mb-1 text-center">Escanear Código QR</h3>
+                <p class="text-gray-500 text-xs text-center mb-4">Apunta la cámara al código QR del camión recolector
+                </p>
+
+                <div class="video-container mb-4 shadow-xl">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="scanner-frame">
+                        <div class="scan-line"></div>
+                    </div>
+                    <div class="corner-marker top-[12%] left-[12%] border-t-4 border-l-4 rounded-tl-lg"></div>
+                    <div class="corner-marker top-[12%] right-[12%] border-t-4 border-r-4 rounded-tr-lg"></div>
+                    <div class="corner-marker bottom-[12%] left-[12%] border-b-4 border-l-4 rounded-bl-lg"></div>
+                    <div class="corner-marker bottom-[12%] right-[12%] border-b-4 border-r-4 rounded-br-lg"></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button id="btn-start-cam" onclick="startCamera()"
+                        class="gradient-bg text-white py-3 px-3 rounded-xl font-bold text-xs hover:opacity-90 transition-all btn-shine flex items-center justify-center">
+                        <i class="fas fa-video mr-1.5"></i>Cámara en Vivo
+                    </button>
+                    <label id="btn-take-photo"
+                        class="bg-emerald-600 text-white py-3 px-3 rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all cursor-pointer text-center flex items-center justify-center shadow">
+                        <i class="fas fa-camera mr-1.5"></i>Tomar Foto (Móvil)
+                        <input type="file" accept="image/*" capture="environment" onchange="handleQRFileUpload(event)"
+                            class="hidden">
+                    </label>
+                    <label id="btn-upload-qr"
+                        class="bg-blue-600 text-white py-3 px-3 rounded-xl font-bold text-xs hover:bg-blue-700 transition-all cursor-pointer text-center flex items-center justify-center">
+                        <i class="fas fa-file-upload mr-1.5"></i>Subir Galería
+                        <input type="file" id="qr-file-input" accept="image/*" onchange="handleQRFileUpload(event)"
+                            class="hidden">
+                    </label>
+                    <button id="btn-stop-cam" onclick="stopCamera()"
+                        class="bg-red-500 text-white py-3 px-3 rounded-xl font-bold text-xs hover:bg-red-600 transition-all hidden flex items-center justify-center">
+                        <i class="fas fa-stop mr-1.5"></i>Detener
+                    </button>
+                    <button id="btn-switch-cam" onclick="switchCamera()"
+                        class="bg-gray-200 text-gray-700 py-3 px-3 rounded-xl font-bold text-xs hover:bg-gray-300 transition-all hidden flex items-center justify-center">
+                        <i class="fas fa-sync-alt mr-1.5"></i>Cambiar
+                    </button>
+                </div>
+
+                <button onclick="showCameraPermissionHelp()" class="text-xs text-blue-600 hover:text-blue-800 underline text-center w-full mb-3 block font-medium">
+                    <i class="fas fa-question-circle mr-1"></i>¿Problemas para abrir la cámara en tu celular? Haz clic aquí
+                </button>
+
+                <div id="scan-status" class="bg-gray-100 rounded-xl p-3 mb-4 text-center">
+                    <p class="text-sm text-gray-600"><i class="fas fa-info-circle mr-1 text-blue-500"></i>Presiona
+                        "Activar Cámara" para comenzar</p>
+                </div>
+
+                <div id="scan-result-container" class="hidden bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-green-100 rounded-full p-2 mt-0.5"><i class="fas fa-check text-green-600"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-green-800 text-sm">¡Código QR detectado!</h4>
+                            <p class="text-xs text-green-700 mt-1">Datos del camión:</p>
+                            <p id="scan-result-text"
+                                class="text-sm font-mono text-gray-800 bg-white rounded-lg p-2 mt-1 qr-result-box border">
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-confirm-scan" onclick="confirmScan()"
+                    class="w-full gradient-bg text-white py-3 px-4 rounded-xl font-bold text-sm hover:opacity-90 transition-all hidden btn-shine">
+                    <i class="fas fa-check-circle mr-2"></i>Confirmar Reciclaje (+50 pts)
+                </button>
+
+                <div class="mt-5 bg-blue-50 rounded-xl p-4">
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-blue-100 rounded-full p-2"><i
+                                class="fas fa-info-circle text-blue-600 text-sm"></i></div>
+                        <div>
+                            <h4 class="font-semibold text-blue-800 text-sm">¿Cómo funciona?</h4>
+                            <ul class="text-xs text-blue-700 mt-1.5 space-y-1">
+                                <li>• Separa tus residuos en casa (orgánicos y reciclables)</li>
+                                <li>• Baja cuando pase el camión o acude al punto verde</li>
+                                <li>• Escanea el QR del camión para validar y ganar 50 Eco-puntos</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-lg p-5">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">Historial de Escaneos</h3>
+                <div id="scan-history" class="space-y-2">
+                    <div class="text-center text-gray-400 py-6">
+                        <i class="fas fa-history text-2xl mb-2"></i>
+                        <p class="text-sm">No hay escaneos recientes</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: REWARDS -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-rewards" class="view-section hidden fade-in">
+            <div class="mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Canjear Beneficios</h3>
+                <p class="text-gray-600 text-sm">Usa tus Eco-puntos en comercios locales</p>
+            </div>
+            <div class="grid gap-4">
+                <div class="bg-white rounded-2xl shadow-lg overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-orange-400 to-orange-500 p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="bg-white rounded-full p-2"><i
+                                        class="fas fa-shopping-basket text-orange-600 text-lg"></i></div>
+                                <div>
+                                    <h4 class="text-white font-bold">Bodega Don José</h4>
+                                    <p class="text-orange-100 text-xs">Alimentos y bebidas</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-white font-bold text-xl">200</p>
+                                <p class="text-orange-100 text-xs">puntos</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-gray-800 font-semibold text-sm">10% de descuento</p>
+                                <p class="text-gray-600 text-xs">En toda la tienda</p>
+                            </div>
+                            <div class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                Disponible</div>
+                        </div>
+                        <button onclick="redeemReward(200, 'BODEGA10', 'Bodega Don José')"
+                            class="w-full bg-orange-500 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-orange-600 transition-all"><i
+                                class="fas fa-ticket-alt mr-2"></i>Canjear</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-amber-600 to-amber-700 p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="bg-white rounded-full p-2"><i
+                                        class="fas fa-coffee text-amber-600 text-lg"></i></div>
+                                <div>
+                                    <h4 class="text-white font-bold">Café Central</h4>
+                                    <p class="text-amber-100 text-xs">Cafetería artesanal</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-white font-bold text-xl">350</p>
+                                <p class="text-amber-100 text-xs">puntos</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-gray-800 font-semibold text-sm">Café gratis</p>
+                                <p class="text-gray-600 text-xs">Cualquier tamaño</p>
+                            </div>
+                            <div class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                Disponible</div>
+                        </div>
+                        <button onclick="redeemReward(350, 'CAFE00', 'Café Central')"
+                            class="w-full bg-amber-600 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-amber-700 transition-all"><i
+                                class="fas fa-ticket-alt mr-2"></i>Canjear</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-purple-500 to-purple-600 p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="bg-white rounded-full p-2"><i
+                                        class="fas fa-carrot text-purple-600 text-lg"></i></div>
+                                <div>
+                                    <h4 class="text-white font-bold">Verdulería La Fresca</h4>
+                                    <p class="text-purple-100 text-xs">Frutas y verduras</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-white font-bold text-xl">150</p>
+                                <p class="text-purple-100 text-xs">puntos</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-gray-800 font-semibold text-sm">15% de descuento</p>
+                                <p class="text-gray-600 text-xs">En productos de temporada</p>
+                            </div>
+                            <div class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                Disponible</div>
+                        </div>
+                        <button onclick="redeemReward(150, 'FRESCA15', 'Verdulería La Fresca')"
+                            class="w-full bg-purple-500 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-purple-600 transition-all"><i
+                                class="fas fa-ticket-alt mr-2"></i>Canjear</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-red-500 to-red-600 p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="bg-white rounded-full p-2"><i
+                                        class="fas fa-pizza-slice text-red-600 text-lg"></i></div>
+                                <div>
+                                    <h4 class="text-white font-bold">Pizzería Mario</h4>
+                                    <p class="text-red-100 text-xs">Comida rápida</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-white font-bold text-xl">500</p>
+                                <p class="text-red-100 text-xs">puntos</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-gray-800 font-semibold text-sm">Pizza mediana gratis</p>
+                                <p class="text-gray-600 text-xs">Ingredientes a elección</p>
+                            </div>
+                            <div class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                Disponible</div>
+                        </div>
+                        <button onclick="redeemReward(500, 'PIZZA00', 'Pizzería Mario')"
+                            class="w-full bg-red-500 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-red-600 transition-all"><i
+                                class="fas fa-ticket-alt mr-2"></i>Canjear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: WORKER (QR + CONTROL DE CAMIÓN) -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-worker" class="view-section hidden fade-in">
+            <!-- Worker Header -->
+            <div class="worker-badge rounded-2xl shadow-lg p-5 mb-5 text-white">
+                <div class="flex items-center space-x-3 mb-2">
+                    <div class="bg-white bg-opacity-20 rounded-full p-2.5"><i class="fas fa-hard-hat text-xl"></i></div>
+                    <div>
+                        <h3 class="text-lg font-bold">Zona de Trabajadores</h3>
+                        <p class="text-xs opacity-90">Control del camión y generador de QR</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control de Ubicación del Camión -->
+            <div class="truck-control-card rounded-2xl shadow-lg p-5 mb-5 text-white">
+                <h3 class="text-base font-semibold mb-3 flex items-center"><i
+                        class="fas fa-truck-moving mr-2"></i>Control de Ubicación del Camión</h3>
+                <p class="text-xs opacity-90 mb-3">Busca una dirección, mueve el marcador en el mapa o ingresa
+                    coordenadas manualmente.</p>
+
+                <!-- Buscador de Dirección del Camión -->
+                <div class="mb-3 flex space-x-2">
+                    <input type="text" id="truck-address-search"
+                        placeholder="Buscar dirección o punto para el camión..."
+                        onkeydown="if(event.key==='Enter') searchTruckAddressOnWorkerMap()"
+                        class="flex-1 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-xl px-3 py-2 text-xs text-white placeholder-white placeholder-opacity-70 focus:outline-none focus:ring-2 focus:ring-white">
+                    <button onclick="searchTruckAddressOnWorkerMap()"
+                        class="bg-white text-purple-700 px-3 py-2 rounded-xl text-xs font-bold hover:bg-opacity-90 transition-all flex items-center whitespace-nowrap">
+                        <i class="fas fa-search mr-1"></i>Buscar Lugar
+                    </button>
+                </div>
+
+                <div id="map-worker" class="shadow-inner border border-white border-opacity-30 mb-3"></div>
+
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                        <label class="text-xs opacity-80 block mb-1">Latitud</label>
+                        <input type="number" id="truck-lat" step="0.000001"
+                            class="w-full bg-white bg-opacity-20 border border-white border-opacity-30 rounded-xl px-3 py-2 text-sm text-white placeholder-white placeholder-opacity-60 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50"
+                            placeholder="-12.046">
+                    </div>
+                    <div>
+                        <label class="text-xs opacity-80 block mb-1">Longitud</label>
+                        <input type="number" id="truck-lng" step="0.000001"
+                            class="w-full bg-white bg-opacity-20 border border-white border-opacity-30 rounded-xl px-3 py-2 text-sm text-white placeholder-white placeholder-opacity-60 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50"
+                            placeholder="-77.042">
+                    </div>
+                </div>
+
+                <div class="flex space-x-2">
+                    <button onclick="updateTruckPositionManual()"
+                        class="flex-1 bg-white text-purple-700 py-2 px-3 rounded-xl font-bold text-xs hover:bg-opacity-90 transition-all">
+                        <i class="fas fa-map-pin mr-1"></i>Actualizar Posición
+                    </button>
+                    <button onclick="useMyLocationAsTruck()"
+                        class="flex-1 bg-white bg-opacity-20 text-white py-2 px-3 rounded-xl font-bold text-xs hover:bg-opacity-30 transition-all">
+                        <i class="fas fa-crosshairs mr-1"></i>Usar Mi Ubicación
+                    </button>
+                </div>
+
+                <div class="mt-3 bg-white bg-opacity-15 rounded-xl p-2.5">
+                    <p class="text-xs"><i class="fas fa-mouse-pointer mr-1"></i> También puedes <b>arrastrar el marcador
+                            azul</b> en el mapa para mover el camión.</p>
+                </div>
+            </div>
+
+            <!-- Formulario Generador QR -->
+            <div class="bg-white rounded-2xl shadow-lg p-5 mb-5">
+                <h3 class="text-base font-semibold text-gray-700 mb-4 flex items-center"><i
+                        class="fas fa-qrcode mr-2 text-green-600"></i>Generar Código QR del Camión</h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">ID del Camión</label>
+                        <input type="text" id="worker-truck-id" placeholder="Ej: CAM-001"
+                            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Zona / Barrio</label>
+                        <input type="text" id="worker-zone" placeholder="Ej: Zona Verde, Barrio Centro"
+                            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
+                            <input type="date" id="worker-date"
+                                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Turno</label>
+                            <select id="worker-shift"
+                                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
+                                <option value="mañana">Mañana</option>
+                                <option value="tarde">Tarde</option>
+                                <option value="noche">Noche</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Nombre del Conductor
+                            (opcional)</label>
+                        <input type="text" id="worker-driver" placeholder="Ej: Juan Pérez"
+                            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    </div>
+                </div>
+                <div class="flex space-x-2 mt-4">
+                    <button onclick="generateWorkerQR()"
+                        class="flex-1 gradient-bg text-white py-3 px-4 rounded-xl font-bold text-sm hover:opacity-90 transition-all btn-shine">
+                        <i class="fas fa-magic mr-2"></i>Generar Código QR
+                    </button>
+                    <button onclick="fillSampleWorkerQR()"
+                        class="bg-gray-100 text-gray-700 py-3 px-3 rounded-xl font-bold text-xs hover:bg-gray-200 transition-all whitespace-nowrap border border-gray-300">
+                        <i class="fas fa-flask mr-1"></i>Cargar Ejemplo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resultado QR -->
+            <div id="worker-qr-result" class="hidden bg-white rounded-2xl shadow-lg p-5 mb-5 text-center">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">Código QR Generado</h3>
+                <p class="text-xs text-gray-500 mb-3">Los vecinos escanearán este código para registrar su reciclaje</p>
+                <div class="bg-gray-50 rounded-xl p-4 inline-block mb-3">
+                    <div id="qrcode-display"></div>
+                </div>
+                <div class="bg-gray-100 rounded-xl p-3 mb-3 text-left">
+                    <p class="text-xs text-gray-500 mb-1">Contenido del QR:</p>
+                    <p id="qr-raw-data" class="text-xs font-mono text-gray-700 break-all"></p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="downloadQR()"
+                        class="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all"><i
+                            class="fas fa-download mr-2"></i>Descargar QR</button>
+                    <button onclick="printQR()"
+                        class="flex-1 bg-gray-600 text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:bg-gray-700 transition-all"><i
+                            class="fas fa-print mr-2"></i>Imprimir</button>
+                </div>
+            </div>
+
+            <!-- Instrucciones -->
+            <div class="bg-white rounded-2xl shadow-lg p-5">
+                <h3 class="text-base font-semibold text-gray-700 mb-3 flex items-center"><i
+                        class="fas fa-clipboard-list mr-2 text-amber-500"></i>Instrucciones para Trabajadores</h3>
+                <div class="space-y-3">
+                    <div class="flex items-start space-x-3">
+                        <div
+                            class="bg-amber-100 rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span class="text-amber-700 font-bold text-xs">1</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Mueve el marcador del camión en el mapa o usa tu ubicación GPS.
+                        </p>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div
+                            class="bg-amber-100 rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span class="text-amber-700 font-bold text-xs">2</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Completa los datos del camión, zona y turno correspondiente.
+                        </p>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div
+                            class="bg-amber-100 rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span class="text-amber-700 font-bold text-xs">3</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Genera el código QR y muéstralo o imprímelo para pegarlo en el
+                            camión.</p>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div
+                            class="bg-amber-100 rounded-full w-7 h-7 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span class="text-amber-700 font-bold text-xs">4</span>
+                        </div>
+                        <p class="text-sm text-gray-600">Los vecinos verán el camión en el mapa en tiempo real y
+                            escanearán el QR.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- MODALES -->
+    <!-- ═══════════════════════════════════════ -->
+    <div id="alert-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden px-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full transform transition-all scale-100">
+            <div id="alert-content"></div>
+        </div>
+    </div>
+
+    <div id="coupon-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden px-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full">
+            <div class="text-center">
+                <div class="bg-green-100 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-3"><i
+                        class="fas fa-check text-green-600 text-xl"></i></div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">¡Canje Exitoso!</h3>
+                <p id="coupon-store" class="text-gray-600 text-sm mb-3"></p>
+                <div class="bg-gray-100 rounded-xl p-3 mb-3">
+                    <p class="text-xs text-gray-600 mb-1">Tu código de cupón:</p>
+                    <p id="coupon-code" class="text-xl font-bold text-gray-800 tracking-wider font-mono"></p>
+                </div>
+                <p class="text-xs text-gray-500 mb-4">Muestra este código en el comercio para obtener tu descuento</p>
+                <button onclick="closeCouponModal()"
+                    class="w-full gradient-bg text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:opacity-90 transition-all">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- SCRIPTS -->
+    <!-- ═══════════════════════════════════════ -->
+    <script>
+        // ═══════════════════════════════════════════
+        // ESTADO GLOBAL
+        // ═══════════════════════════════════════════
+        let ecoPoints = 0;
+        let scanCount = 0;
+        let lastScannedData = null;
+
+        // Cámara
+        let videoStream = null;
+        let scanning = false;
+        let rafId = null;
+        let currentFacingMode = 'environment';
+
+        // Mapas Leaflet
+        let map = null;
+        let mapWorker = null;
+        let userMarker = null;
+        let truckMarker = null;
+        let truckMarkerWorker = null;
+        let routeLine = null;
+
+        // Ubicaciones
+        let userLocation = null;
+        let truckLocation = null;
+
+        // QR
+        let workerQRCode = null;
+
+        // Coordenada default (Lima, Perú como ejemplo)
+        const DEFAULT_LAT = -12.046374;
+        const DEFAULT_LNG = -77.042793;
+
+        // ═══════════════════════════════════════════
+        // INICIALIZACIÓN
+        // ═══════════════════════════════════════════
+        document.addEventListener('DOMContentLoaded', () => {
+            updatePointsDisplay();
+            const dateInput = document.getElementById('worker-date');
+            if (dateInput) dateInput.valueAsDate = new Date();
+
+            // Inicializar ubicación del camión con un offset del default
+            truckLocation = { lat: DEFAULT_LAT + 0.003, lng: DEFAULT_LNG + 0.002 };
+
+            // Inicializar mapas y obtener ubicación GPS
+            setTimeout(() => {
+                initMap();
+                initWorkerMap();
+                getUserLocation();
+            }, 200);
+        });
+
+        // ═══════════════════════════════════════════
+        // MAPA PRINCIPAL (Inicio)
+        // ═══════════════════════════════════════════
+        function initMap() {
+            const mapEl = document.getElementById('map');
+            if (!mapEl) return;
+
+            map = L.map('map', { zoomControl: false }).setView([DEFAULT_LAT, DEFAULT_LNG], 14);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Marcador del camión
+            const truckIcon = L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            truckMarker = L.marker([truckLocation.lat, truckLocation.lng], { icon: truckIcon })
+                .addTo(map)
+                .bindPopup('<b>🚛 Camión Recolector</b><br>Zona Verde<br>Estado: En ruta');
+
+            // Marcador del usuario
+            const userIcon = L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            const initLat = userLocation ? userLocation.lat : DEFAULT_LAT;
+            const initLng = userLocation ? userLocation.lng : DEFAULT_LNG;
+
+            userMarker = L.marker([initLat, initLng], { icon: userIcon })
+                .addTo(map)
+                .bindPopup('<b>🏠 Tu Ubicación</b>');
+
+            // Línea de ruta
+            routeLine = L.polyline(
+                [[truckLocation.lat, truckLocation.lng], [initLat, initLng]],
+                { color: '#3b82f6', weight: 4, opacity: 0.6, dashArray: '8, 8' }
+            ).addTo(map);
+
+            // Permitir al usuario hacer clic en el mapa para ajustar manualmente su posición si falla el GPS
+            map.on('click', function (e) {
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                userLocation = { lat, lng };
+                updateUserMarker(lat, lng);
+                calculateETA();
+                fetchAddress(lat, lng);
+                const dot = document.getElementById('gps-dot');
+                const text = document.getElementById('gps-text');
+                const coordsEl = document.getElementById('user-coords');
+                if (dot) dot.className = 'status-dot online';
+                if (text) text.textContent = 'Manual';
+                if (coordsEl) coordsEl.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            });
+        }
+
+        // ═══════════════════════════════════════════
+        // MAPA DEL TRABAJADOR (Control del camión)
+        // ═══════════════════════════════════════════
+        function initWorkerMap() {
+            const mapEl = document.getElementById('map-worker');
+            if (!mapEl) return;
+
+            mapWorker = L.map('map-worker', { zoomControl: false }).setView([truckLocation.lat, truckLocation.lng], 15);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(mapWorker);
+
+            const truckIcon = L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            truckMarkerWorker = L.marker([truckLocation.lat, truckLocation.lng], {
+                icon: truckIcon,
+                draggable: true
+            }).addTo(mapWorker).bindPopup('<b>🚛 Arrastra para mover el camión</b>');
+
+            truckMarkerWorker.on('dragend', function (e) {
+                const pos = e.target.getLatLng();
+                truckLocation = { lat: pos.lat, lng: pos.lng };
+                document.getElementById('truck-lat').value = pos.lat.toFixed(6);
+                document.getElementById('truck-lng').value = pos.lng.toFixed(6);
+                updateTruckOnMainMap();
+                calculateETA();
+            });
+
+            document.getElementById('truck-lat').value = truckLocation.lat.toFixed(6);
+            document.getElementById('truck-lng').value = truckLocation.lng.toFixed(6);
+        }
+
+        // ═══════════════════════════════════════════
+        // GPS - UBICACIÓN DEL USUARIO Y GEOCODIFICACIÓN
+        // ═══════════════════════════════════════════
+        async function fetchAddress(lat, lng) {
+            const addressEl = document.getElementById('user-address');
+            if (!addressEl) return;
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.display_name) {
+                        const parts = data.display_name.split(',');
+                        const shortAddr = parts.slice(0, 3).join(', ');
+                        addressEl.textContent = shortAddr;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Geocoding notice:', e);
+            }
+            addressEl.textContent = `Coordenadas: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        }
+
+        async function fetchIPLocation() {
+            const dot = document.getElementById('gps-dot');
+            const text = document.getElementById('gps-text');
+            const coordsEl = document.getElementById('user-coords');
+            const addressEl = document.getElementById('user-address');
+
+            // Lista de APIs públicas con soporte CORS para archivos locales (origin null / file://)
+            const apis = [
+                {
+                    url: 'https://freeipapi.com/api/json',
+                    extract: data => ({
+                        lat: parseFloat(data.latitude),
+                        lng: parseFloat(data.longitude),
+                        city: data.cityName,
+                        region: data.regionName,
+                        country: data.countryName
+                    })
+                },
+                {
+                    url: 'https://get.geojs.io/v1/ip/geo.json',
+                    extract: data => ({
+                        lat: parseFloat(data.latitude),
+                        lng: parseFloat(data.longitude),
+                        city: data.city,
+                        region: data.region,
+                        country: data.country
+                    })
+                }
+            ];
+
+            for (const api of apis) {
+                try {
+                    const response = await fetch(api.url);
+                    if (response.ok) {
+                        const raw = await response.json();
+                        const loc = api.extract(raw);
+                        if (loc.lat && loc.lng && !isNaN(loc.lat) && !isNaN(loc.lng)) {
+                            userLocation = { lat: loc.lat, lng: loc.lng };
+                            updateUserMarker(loc.lat, loc.lng);
+                            calculateETA();
+
+                            if (dot) dot.className = 'status-dot online';
+                            if (text) text.textContent = 'Ubicación';
+                            if (coordsEl) coordsEl.textContent = `${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)}`;
+                            if (addressEl) {
+                                const parts = [loc.city, loc.region, loc.country].filter(Boolean);
+                                addressEl.textContent = parts.length > 0 ? `${parts.join(', ')} (aprox. por red)` : 'Ubicación aproximada por red';
+                            }
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    // ignorar de forma silenciosa para probar el siguiente endpoint
+                }
+            }
+            return false;
+        }
+
+        function getUserLocation() {
+            const dot = document.getElementById('gps-dot');
+            const text = document.getElementById('gps-text');
+            const coordsEl = document.getElementById('user-coords');
+            const addressEl = document.getElementById('user-address');
+
+            if (dot) dot.className = 'status-dot loading';
+            if (text) text.textContent = 'Buscando...';
+            if (addressEl) addressEl.textContent = 'Obteniendo ubicación...';
+
+            if (!navigator.geolocation) {
+                fallbackIPOrDefault();
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    userLocation = { lat, lng };
+
+                    if (dot) dot.className = 'status-dot online';
+                    if (text) text.textContent = 'Conectado';
+                    if (coordsEl) coordsEl.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+                    updateUserMarker(lat, lng);
+                    calculateETA();
+                    fetchAddress(lat, lng);
+                },
+                async (error) => {
+                    const ipSuccess = await fetchIPLocation();
+                    if (!ipSuccess) {
+                        let reason = 'GPS no disponible';
+                        if (error.code === 1) reason = 'Permiso denegado por el usuario';
+                        else if (error.code === 2) reason = 'Posición GPS inaccesible';
+                        else if (error.code === 3) reason = 'Tiempo de espera agotado';
+
+                        if (dot) dot.className = 'status-dot offline';
+                        if (text) text.textContent = error.code === 1 ? 'Bloqueado' : 'Sin GPS';
+                        if (coordsEl) coordsEl.textContent = `${DEFAULT_LAT.toFixed(4)}, ${DEFAULT_LNG.toFixed(4)} (defecto)`;
+                        if (addressEl) {
+                            addressEl.textContent = error.code === 1
+                                ? 'Ubicación bloqueada en tu navegador. Usa el buscador de arriba o haz clic en el mapa.'
+                                : `${reason}. Puedes buscar tu dirección o hacer clic en el mapa.`;
+                        }
+                        userLocation = { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+                        updateUserMarker(DEFAULT_LAT, DEFAULT_LNG);
+                        calculateETA();
+                    }
+                },
+                { enableHighAccuracy: false, timeout: 4000, maximumAge: 300000 }
+            );
+        }
+
+        async function fallbackIPOrDefault() {
+            const success = await fetchIPLocation();
+            if (!success) {
+                const dot = document.getElementById('gps-dot');
+                const text = document.getElementById('gps-text');
+                const coordsEl = document.getElementById('user-coords');
+                const addressEl = document.getElementById('user-address');
+                if (dot) dot.className = 'status-dot offline';
+                if (text) text.textContent = 'Sin GPS';
+                if (coordsEl) coordsEl.textContent = `${DEFAULT_LAT.toFixed(4)}, ${DEFAULT_LNG.toFixed(4)} (defecto)`;
+                if (addressEl) addressEl.textContent = 'GPS no disponible. Puedes hacer clic en el mapa para marcar tu ubicación.';
+                userLocation = { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+                updateUserMarker(DEFAULT_LAT, DEFAULT_LNG);
+                calculateETA();
+            }
+        }
+
+        async function searchAddressOnMap() {
+            const input = document.getElementById('address-search-input');
+            if (!input || !input.value.trim()) return;
+
+            const query = input.value.trim();
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                if (response.ok) {
+                    const results = await response.json();
+                    if (results && results.length > 0) {
+                        const lat = parseFloat(results[0].lat);
+                        const lng = parseFloat(results[0].lon);
+                        userLocation = { lat, lng };
+                        updateUserMarker(lat, lng);
+                        calculateETA();
+                        fetchAddress(lat, lng);
+
+                        const dot = document.getElementById('gps-dot');
+                        const text = document.getElementById('gps-text');
+                        const coordsEl = document.getElementById('user-coords');
+                        if (dot) dot.className = 'status-dot online';
+                        if (text) text.textContent = 'Búsqueda';
+                        if (coordsEl) coordsEl.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+                        const shortName = results[0].display_name.split(',').slice(0, 2).join(',');
+                        showAlert('success', 'Ubicación Encontrada', `Mapa centrado en: ${shortName}`, 'fa-map-marker-alt');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Address search error:', e);
+            }
+            showAlert('error', 'No encontrada', 'No se encontró la dirección. Intenta escribir una calle, distrito o ciudad.', 'fa-exclamation-triangle');
+        }
+
+        function showGPSPermissionHelp() {
+            showAlert('info', 'Permiso de Ubicación Bloqueado',
+                'Tu navegador ha denegado el acceso a la ubicación.<br><br>' +
+                '<b>Pasos para desbloquear:</b><br>' +
+                '1. Haz clic en el ícono de <b>candado 🔒</b> o <b>configuración ⚙️</b> a la izquierda de la barra de direcciones del navegador.<br>' +
+                '2. Busca el permiso de <b>Ubicación</b> o <b>Location</b>.<br>' +
+                '3. Cambia el permiso a <b>Permitir</b> (Allow).<br>' +
+                '4. Haz clic en "Reintentar GPS".<br><br>' +
+                '<i>💡 También puedes escribir tu calle o ciudad en el buscador sobre el mapa o hacer clic en el mapa.</i>',
+                'fa-unlock-alt');
+        }
+
+        function refreshLocation() {
+            getUserLocation();
+            showAlert('info', 'Ubicación Actualizada', 'Solicitando nueva posición GPS...', 'fa-location-arrow');
+        }
+
+        function updateUserMarker(lat, lng) {
+            if (userMarker && map) {
+                userMarker.setLatLng([lat, lng]);
+                userMarker.setPopupContent(`<b>🏠 Tu Ubicación</b><br>Lat: ${lat.toFixed(5)}<br>Lng: ${lng.toFixed(5)}`);
+                map.panTo([lat, lng]);
+            }
+            if (routeLine && truckLocation) {
+                routeLine.setLatLngs([[truckLocation.lat, truckLocation.lng], [lat, lng]]);
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // ACTUALIZAR POSICIÓN DEL CAMIÓN Y BÚSQUEDA
+        // ═══════════════════════════════════════════
+        async function searchTruckAddressOnWorkerMap() {
+            const input = document.getElementById('truck-address-search');
+            if (!input || !input.value.trim()) return;
+
+            const query = input.value.trim();
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                if (response.ok) {
+                    const results = await response.json();
+                    if (results && results.length > 0) {
+                        const lat = parseFloat(results[0].lat);
+                        const lng = parseFloat(results[0].lon);
+
+                        truckLocation = { lat, lng };
+                        document.getElementById('truck-lat').value = lat.toFixed(6);
+                        document.getElementById('truck-lng').value = lng.toFixed(6);
+
+                        if (truckMarkerWorker) {
+                            truckMarkerWorker.setLatLng([lat, lng]);
+                            mapWorker.panTo([lat, lng]);
+                        }
+                        updateTruckOnMainMap();
+                        calculateETA();
+
+                        const shortName = results[0].display_name.split(',').slice(0, 2).join(',');
+                        showAlert('success', 'Camión Ubicado', `El camión fue trasladado a: ${shortName}`, 'fa-truck');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Truck address search error:', e);
+            }
+            showAlert('error', 'No encontrada', 'No se encontró la ubicación buscada para el camión.', 'fa-exclamation-triangle');
+        }
+
+        function updateTruckPositionManual() {
+            const lat = parseFloat(document.getElementById('truck-lat').value);
+            const lng = parseFloat(document.getElementById('truck-lng').value);
+
+            if (isNaN(lat) || isNaN(lng)) {
+                showAlert('error', 'Coordenadas inválidas', 'Ingresa valores numéricos válidos para latitud y longitud.', 'fa-exclamation-triangle');
+                return;
+            }
+
+            truckLocation = { lat, lng };
+
+            if (truckMarkerWorker) {
+                truckMarkerWorker.setLatLng([lat, lng]);
+                mapWorker.panTo([lat, lng]);
+            }
+
+            updateTruckOnMainMap();
+            calculateETA();
+            showAlert('success', 'Posición Actualizada', `El camión ahora está en: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, 'fa-map-pin');
+        }
+
+        function useMyLocationAsTruck() {
+            if (!userLocation) {
+                showAlert('error', 'Ubicación no disponible', 'Primero obtén tu ubicación GPS en la pestaña Inicio.', 'fa-exclamation-triangle');
+                return;
+            }
+            document.getElementById('truck-lat').value = userLocation.lat.toFixed(6);
+            document.getElementById('truck-lng').value = userLocation.lng.toFixed(6);
+            updateTruckPositionManual();
+        }
+
+        function updateTruckOnMainMap() {
+            if (truckMarker && map) {
+                truckMarker.setLatLng([truckLocation.lat, truckLocation.lng]);
+                truckMarker.setPopupContent(`<b>🚛 Camión Recolector</b><br>Lat: ${truckLocation.lat.toFixed(5)}<br>Lng: ${truckLocation.lng.toFixed(5)}<br>Estado: En ruta`);
+            }
+            if (routeLine && userLocation) {
+                routeLine.setLatLngs([[truckLocation.lat, truckLocation.lng], [userLocation.lat, userLocation.lng]]);
+            } else if (routeLine) {
+                routeLine.setLatLngs([[truckLocation.lat, truckLocation.lng], [DEFAULT_LAT, DEFAULT_LNG]]);
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // CALCULAR DISTANCIA Y TIEMPO ESTIMADO
+        // ═══════════════════════════════════════════
+        function calculateETA() {
+            const user = userLocation || { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+            const truck = truckLocation || { lat: DEFAULT_LAT + 0.003, lng: DEFAULT_LNG + 0.002 };
+
+            const dist = haversineDistance(user.lat, user.lng, truck.lat, truck.lng);
+            const speedKmh = 15;
+            const timeMin = Math.round((dist / speedKmh) * 60);
+
+            const distEl = document.getElementById('truck-distance');
+            const etaEl = document.getElementById('truck-eta');
+            if (distEl) distEl.textContent = dist.toFixed(2) + ' km';
+
+            if (etaEl) {
+                if (timeMin < 1) {
+                    etaEl.textContent = '¡Llegando ahora!';
+                } else if (timeMin === 1) {
+                    etaEl.textContent = '1 minuto';
+                } else {
+                    etaEl.textContent = timeMin + ' minutos';
+                }
+            }
+        }
+
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // ═══════════════════════════════════════════
+        // NAVEGACIÓN POR TABS
+        // ═══════════════════════════════════════════
+        function switchTab(tabName) {
+            if (tabName !== 'scan') stopCamera();
+
+            document.querySelectorAll('.view-section').forEach(view => view.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('tab-active');
+                btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+            });
+
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            const activeTab = document.getElementById(`tab-${tabName}`);
+            if (activeTab) {
+                activeTab.classList.add('tab-active');
+                activeTab.classList.remove('text-gray-600', 'hover:bg-gray-100');
+            }
+
+            setTimeout(() => {
+                if (tabName === 'home' && map) map.invalidateSize();
+                if (tabName === 'worker' && mapWorker) mapWorker.invalidateSize();
+            }, 100);
+        }
+
+        // ═══════════════════════════════════════════
+        // PUNTOS
+        // ═══════════════════════════════════════════
+        function updatePointsDisplay() {
+            const headerPts = document.getElementById('header-points');
+            const mainPts = document.getElementById('main-points');
+            const ptsBar = document.getElementById('points-bar');
+
+            if (headerPts) headerPts.textContent = ecoPoints;
+            if (mainPts) mainPts.textContent = ecoPoints;
+            if (ptsBar) {
+                const percentage = Math.min((ecoPoints / 1000) * 100, 100);
+                ptsBar.style.width = `${percentage}%`;
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // CÁMARA REAL + ESCANER QR + SUBIDA DE IMAGEN
+        // ═══════════════════════════════════════════
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas ? canvas.getContext('2d', { willReadFrequently: true }) : null;
+
+        async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showAlert('error', 'Cámara no disponible', 'Tu navegador o entorno (HTTP) no permite el acceso a la cámara. Puedes utilizar la opción "Subir Imagen QR".', 'fa-video-slash');
+                updateScanStatus('Cámara no disponible (requiere HTTPS o navegador compatible)', 'error');
+                return;
+            }
+
+            try {
+                let stream = null;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    });
+                } catch (e1) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: currentFacingMode },
+                            audio: false
+                        });
+                    } catch (e2) {
+                        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    }
+                }
+
+                videoStream = stream;
+                video.srcObject = videoStream;
+                await video.play();
+
+                scanning = true;
+                document.getElementById('btn-start-cam').classList.add('hidden');
+                document.getElementById('btn-stop-cam').classList.remove('hidden');
+                document.getElementById('btn-switch-cam').classList.remove('hidden');
+                updateScanStatus('Escaneando... Apunta al código QR del camión', 'scanning');
+                scanLoop();
+            } catch (err) {
+                console.error('Camera Access Error:', err);
+                let msg = 'No se pudo acceder a la cámara. ';
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    msg += 'Permiso denegado por el usuario o navegador.';
+                } else if (err.name === 'NotFoundError') {
+                    msg += 'No se encontró una cámara física.';
+                } else {
+                    msg += err.message;
+                }
+                msg += ' Puedes usar el botón "Subir Imagen QR" para cargar una foto.';
+                showAlert('error', 'Error de Cámara', msg, 'fa-video-slash');
+                updateScanStatus('Error al iniciar cámara', 'error');
+            }
+        }
+
+        function stopCamera() {
+            scanning = false;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+            if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+            if (video) video.srcObject = null;
+            const startBtn = document.getElementById('btn-start-cam');
+            const stopBtn = document.getElementById('btn-stop-cam');
+            const switchBtn = document.getElementById('btn-switch-cam');
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (switchBtn) switchBtn.classList.add('hidden');
+            updateScanStatus('Presiona "Activar Cámara" o "Subir Imagen QR" para comenzar', 'idle');
+        }
+
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            stopCamera();
+            setTimeout(startCamera, 300);
+        }
+
+        function showCameraPermissionHelp() {
+            showAlert('info', 'Permisos de Cámara en Celulares',
+                '<b>Si estás en un celular y no se abre la cámara:</b><br><br>' +
+                '<b>1. Usa el botón "Tomar Foto (Móvil)" 📸:</b> Es la solución directa más rápida. Abre la cámara nativa de tu celular inmediatamente sin pedir permisos web.<br><br>' +
+                '<b>2. En Google Chrome (Android):</b><br>' +
+                '• Toca el ícono de <b>candado 🔒</b> a la izquierda de la dirección web.<br>' +
+                '• Selecciona <b>Permisos del sitio</b> -> <b>Cámara</b> -> <b>Permitir</b>.<br><br>' +
+                '<b>3. En Safari (iPhone / iOS):</b><br>' +
+                '• Ve a <b>Ajustes ⚙️</b> de tu iPhone -> <b>Safari</b> -> <b>Cámara</b> -> <b>Permitir</b>.<br>' +
+                '• O toca "aA" en la barra de direcciones de Safari -> Configuración del sitio web -> Cámara -> Permitir.',
+                'fa-camera');
+        }
+
+        async function scanWithZXing(elementOrImage) {
+            if (typeof ZXing !== 'undefined' && ZXing.BrowserQRCodeReader) {
+                try {
+                    if (!window._zxingReader) {
+                        window._zxingReader = new ZXing.BrowserQRCodeReader();
+                    }
+                    const result = await window._zxingReader.decodeFromImageElement(elementOrImage);
+                    if (result && result.getText()) {
+                        return result.getText();
+                    }
+                } catch (e) {
+                    // ignorar
+                }
+            }
+            return null;
+        }
+
+        async function scanLoop() {
+            if (!scanning) return;
+            if (video && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+                // 1. BarcodeDetector nativo
+                if ('BarcodeDetector' in window) {
+                    try {
+                        if (!window._barcodeDetector) {
+                            window._barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+                        }
+                        const barcodes = await window._barcodeDetector.detect(video);
+                        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                            lastScannedData = barcodes[0].rawValue;
+                            stopCamera();
+                            showScanResult(barcodes[0].rawValue);
+                            updateScanStatus('¡Código QR detectado!', 'success');
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('BarcodeDetector video loop error:', e);
+                    }
+                }
+
+                // 2. jsQR en frame completo
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+                if (code && code.data) {
+                    lastScannedData = code.data;
+                    stopCamera();
+                    showScanResult(code.data);
+                    updateScanStatus('¡Código QR detectado!', 'success');
+                    return;
+                }
+
+                // 3. jsQR en región central ROI (Center 65%)
+                const cropW = Math.round(canvas.width * 0.65);
+                const cropH = Math.round(canvas.height * 0.65);
+                const cropX = Math.round((canvas.width - cropW) / 2);
+                const cropY = Math.round((canvas.height - cropH) / 2);
+                const roiData = ctx.getImageData(cropX, cropY, cropW, cropH);
+                code = jsQR(roiData.data, cropW, cropH, { inversionAttempts: 'attemptBoth' });
+                if (code && code.data) {
+                    lastScannedData = code.data;
+                    stopCamera();
+                    showScanResult(code.data);
+                    updateScanStatus('¡Código QR detectado!', 'success');
+                    return;
+                }
+            }
+            rafId = requestAnimationFrame(scanLoop);
+        }
+
+        function binarizeImageData(imageData) {
+            const data = new Uint8ClampedArray(imageData.data);
+            for (let i = 0; i < data.length; i += 4) {
+                const luminance = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+                const val = luminance < 140 ? 0 : 255;
+                data[i] = val;
+                data[i + 1] = val;
+                data[i + 2] = val;
+            }
+            return new ImageData(data, imageData.width, imageData.height);
+        }
+
+        async function scanQRFromImage(img) {
+            // 1. ZXing Engine (El motor de escaneo más potente)
+            const zxingResult = await scanWithZXing(img);
+            if (zxingResult) return zxingResult;
+
+            // 2. BarcodeDetector nativo del navegador
+            if ('BarcodeDetector' in window) {
+                try {
+                    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+                    const barcodes = await detector.detect(img);
+                    if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                        return barcodes[0].rawValue;
+                    }
+                } catch (e) {
+                    console.warn('Native BarcodeDetector image error:', e);
+                }
+            }
+
+            // 3. jsQR a resolución original
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0, img.width, img.height);
+            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) return code.data;
+
+            // 4. Binarización de contraste
+            let binarized = binarizeImageData(imageData);
+            code = jsQR(binarized.data, binarized.width, binarized.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) return code.data;
+
+            // 5. Recorte de Región Central (Center Crop 75% y 50%)
+            let croppedCode = scanCenterCrop(img, 0.75);
+            if (croppedCode) return croppedCode;
+
+            croppedCode = scanCenterCrop(img, 0.5);
+            if (croppedCode) return croppedCode;
+
+            // 6. Re-escalado downsampling max 800px
+            const MAX_DIM = 800;
+            if (img.width > MAX_DIM || img.height > MAX_DIM) {
+                const scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+                if (code && code.data) return code.data;
+
+                const scaledBinarized = binarizeImageData(imageData);
+                code = jsQR(scaledBinarized.data, scaledBinarized.width, scaledBinarized.height, { inversionAttempts: 'attemptBoth' });
+                if (code && code.data) return code.data;
+            }
+
+            // 7. Intento final con inversionAttempts: 'dontInvert'
+            code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+            if (code && code.data) return code.data;
+
+            return null;
+        }
+
+        function scanCenterCrop(img, ratio) {
+            const cropW = Math.round(img.width * ratio);
+            const cropH = Math.round(img.height * ratio);
+            const cropX = Math.round((img.width - cropW) / 2);
+            const cropY = Math.round((img.height - cropH) / 2);
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = cropW;
+            tempCanvas.height = cropH;
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+            tempCtx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+            const imageData = tempCtx.getImageData(0, 0, cropW, cropH);
+            let code = jsQR(imageData.data, cropW, cropH, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) return code.data;
+
+            const binarized = binarizeImageData(imageData);
+            code = jsQR(binarized.data, cropW, cropH, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) return code.data;
+
+            return null;
+        }
+
+        function handleQRFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            updateScanStatus('Procesando imagen con múltiples motores...', 'scanning');
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = new Image();
+                img.onload = async function () {
+                    const qrText = await scanQRFromImage(img);
+                    if (qrText) {
+                        lastScannedData = qrText;
+                        showScanResult(qrText);
+                        updateScanStatus('¡Código QR detectado desde imagen!', 'success');
+                        showAlert('success', '¡QR Decodificado!', 'Se detectó con éxito el código QR desde la imagen seleccionada.', 'fa-check-circle');
+                    } else {
+                        showAlert('error', 'QR No Encontrado', 'No se pudo detectar un código QR en la imagen. Asegúrate de que el código sea visible y no esté cortado.', 'fa-exclamation-triangle');
+                        updateScanStatus('No se encontró QR en la imagen', 'error');
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        function updateScanStatus(message, type) {
+            const statusEl = document.getElementById('scan-status');
+            if (!statusEl) return;
+            const icons = {
+                idle: '<i class="fas fa-info-circle mr-1 text-blue-500"></i>',
+                scanning: '<i class="fas fa-spinner fa-spin mr-1 text-green-500"></i>',
+                success: '<i class="fas fa-check-circle mr-1 text-green-500"></i>',
+                error: '<i class="fas fa-exclamation-circle mr-1 text-red-500"></i>'
+            };
+            statusEl.innerHTML = `${icons[type] || icons.idle}${message}`;
+        }
+
+        function showScanResult(data) {
+            const container = document.getElementById('scan-result-container');
+            const textEl = document.getElementById('scan-result-text');
+            const confirmBtn = document.getElementById('btn-confirm-scan');
+            let displayText = data;
+            try {
+                const parsed = JSON.parse(data);
+                const truckId = parsed.truckId || parsed.id || 'CAM-001';
+                const zone = parsed.zone || parsed.z || 'Zona Centro';
+                const date = parsed.date || parsed.d || 'Hoy';
+                const shift = parsed.shift || parsed.s || 'Mañana';
+                const driver = parsed.driver || parsed.dr || 'Conductor';
+                displayText = `🚛 Camión: ${truckId}\n📍 Zona: ${zone}\n📅 Fecha: ${date}\n🕐 Turno: ${shift}\n👤 Conductor: ${driver}`;
+            } catch (e) { displayText = data; }
+            textEl.innerText = displayText;
+            container.classList.remove('hidden');
+            confirmBtn.classList.remove('hidden');
+        }
+
+        function confirmScan() {
+            if (!lastScannedData) return;
+            ecoPoints += 50;
+            scanCount++;
+            updatePointsDisplay();
+            addScanToHistory(lastScannedData);
+            document.getElementById('scan-result-container').classList.add('hidden');
+            document.getElementById('btn-confirm-scan').classList.add('hidden');
+            lastScannedData = null;
+            showAlert('success', '¡Residuo registrado correctamente!', 'Ganaste 50 Eco-puntos por reciclar. ¡Gracias por cuidar el barrio!', 'fa-check-circle');
+        }
+
+        function addScanToHistory(data) {
+            const historyContainer = document.getElementById('scan-history');
+            if (!historyContainer) return;
+            if (scanCount === 1) historyContainer.innerHTML = '';
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            let truckInfo = 'Camión recolector';
+            try { const parsed = JSON.parse(data); truckInfo = `Camión ${parsed.truckId || ''}`; } catch (e) { }
+            const scanItem = document.createElement('div');
+            scanItem.className = 'flex items-center space-x-3 bg-green-50 rounded-xl p-3 fade-in';
+            scanItem.innerHTML = `
+        <div class="bg-green-100 rounded-full p-2"><i class="fas fa-qrcode text-green-600 text-sm"></i></div>
+        <div class="flex-1 min-w-0"><p class="font-medium text-gray-800 text-sm truncate">${truckInfo}</p><p class="text-xs text-gray-600">+50 puntos • ${timeString}</p></div>
+        <div class="text-green-600 font-bold text-sm"><i class="fas fa-plus-circle"></i></div>`;
+            historyContainer.insertBefore(scanItem, historyContainer.firstChild);
+        }
+
+        // ═══════════════════════════════════════════
+        // GENERADOR DE QR PARA TRABAJADORES (NPM QRCODE)
+        // ═══════════════════════════════════════════
+        function fillSampleWorkerQR() {
+            document.getElementById('worker-truck-id').value = 'CAM-001';
+            document.getElementById('worker-zone').value = 'Zona Verde - Centro';
+            document.getElementById('worker-driver').value = 'Juan Pérez';
+            generateWorkerQR();
+        }
+
+        function generateWorkerQR() {
+            const truckId = document.getElementById('worker-truck-id').value.trim();
+            const zone = document.getElementById('worker-zone').value.trim();
+            const date = document.getElementById('worker-date').value;
+            const shift = document.getElementById('worker-shift').value;
+            const driver = document.getElementById('worker-driver').value.trim();
+
+            if (!truckId || !zone || !date) {
+                showAlert('error', 'Datos incompletos', 'Por favor completa al menos el ID del camión, la zona y la fecha.', 'fa-exclamation-triangle');
+                return;
+            }
+
+            const qrData = {
+                truckId: truckId,
+                zone: zone,
+                date: date,
+                shift: shift,
+                driver: driver || 'No especificado',
+                truckLat: truckLocation ? truckLocation.lat : null,
+                truckLng: truckLocation ? truckLocation.lng : null,
+                generatedAt: new Date().toISOString(),
+                app: 'EcoBarrio'
+            };
+            const qrString = JSON.stringify(qrData);
+
+            const displayEl = document.getElementById('qrcode-display');
+            displayEl.innerHTML = '';
+
+            // Opción 1: Librería qrcode-generator (Kazuhiko Arase) con renderizado directo a canvas sin artefactos
+            if (typeof qrcode === 'function') {
+                try {
+                    const qr = qrcode(0, 'M');
+                    qr.addData(qrString);
+                    qr.make();
+
+                    const moduleCount = qr.getModuleCount();
+                    const cellSize = 6;
+                    const margin = 16;
+                    const canvasSize = moduleCount * cellSize + margin * 2;
+
+                    const canvasEl = document.createElement('canvas');
+                    canvasEl.width = canvasSize;
+                    canvasEl.height = canvasSize;
+                    canvasEl.style.width = '240px';
+                    canvasEl.style.height = '240px';
+                    canvasEl.style.margin = '0 auto';
+                    canvasEl.style.display = 'block';
+                    canvasEl.style.borderRadius = '12px';
+                    canvasEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+
+                    const canvasCtx = canvasEl.getContext('2d');
+                    canvasCtx.fillStyle = '#ffffff';
+                    canvasCtx.fillRect(0, 0, canvasSize, canvasSize);
+                    canvasCtx.fillStyle = '#000000';
+
+                    for (let row = 0; row < moduleCount; row++) {
+                        for (let col = 0; col < moduleCount; col++) {
+                            if (qr.isDark(row, col)) {
+                                canvasCtx.fillRect(margin + col * cellSize, margin + row * cellSize, cellSize, cellSize);
+                            }
+                        }
+                    }
+
+                    displayEl.appendChild(canvasEl);
+                    renderQRSuccess(qrString);
+                    return;
+                } catch (e) {
+                    console.warn('qrcode-generator canvas error:', e);
+                }
+            }
+
+            // Opción 2: Librería QRCode (node-qrcode CDN build)
+            if (typeof QRCode !== 'undefined' && typeof QRCode.toCanvas === 'function') {
+                const canvasEl = document.createElement('canvas');
+                displayEl.appendChild(canvasEl);
+                QRCode.toCanvas(canvasEl, qrString, {
+                    width: 240,
+                    margin: 2,
+                    color: { dark: '#059669', light: '#ffffff' },
+                    errorCorrectionLevel: 'M'
+                }, function (error) {
+                    if (!error) {
+                        renderQRSuccess(qrString);
+                    } else {
+                        fallbackQRServerAPI(displayEl, qrString);
+                    }
+                });
+                return;
+            }
+
+            // Opción 3: API de Servicio QR (Respaldo Garantizado vía Red)
+            fallbackQRServerAPI(displayEl, qrString);
+        }
+
+        function fallbackQRServerAPI(displayEl, qrString) {
+            displayEl.innerHTML = '';
+            const img = document.createElement('img');
+            img.crossOrigin = 'anonymous';
+            img.src = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&color=059669&data=${encodeURIComponent(qrString)}`;
+            img.alt = 'Código QR EcoBarrio';
+            img.className = 'mx-auto rounded-xl shadow-sm border border-gray-200';
+            img.style.width = '240px';
+            img.style.height = '240px';
+            displayEl.appendChild(img);
+            renderQRSuccess(qrString);
+        }
+
+        function renderQRSuccess(qrString) {
+            document.getElementById('worker-qr-result').classList.remove('hidden');
+            document.getElementById('qr-raw-data').textContent = qrString;
+            setTimeout(() => { document.getElementById('worker-qr-result').scrollIntoView({ behavior: 'smooth' }); }, 100);
+        }
+
+        function getQRElementDataURL() {
+            const qrCanvas = document.querySelector('#qrcode-display canvas');
+            if (qrCanvas) {
+                return qrCanvas.toDataURL('image/png');
+            }
+            const qrImg = document.querySelector('#qrcode-display img');
+            if (qrImg && qrImg.src) {
+                if (qrImg.src.startsWith('data:')) {
+                    return qrImg.src;
+                }
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = qrImg.naturalWidth || 240;
+                tempCanvas.height = qrImg.naturalHeight || 240;
+                const tempCtx = tempCanvas.getContext('2d');
+                try {
+                    tempCtx.drawImage(qrImg, 0, 0);
+                    return tempCanvas.toDataURL('image/png');
+                } catch (e) {
+                    return qrImg.src;
+                }
+            }
+            return null;
+        }
+
+        function downloadQR() {
+            const dataUrl = getQRElementDataURL();
+            if (!dataUrl) {
+                showAlert('error', 'Sin Código QR', 'Primero genera un código QR para poder descargarlo.', 'fa-exclamation-triangle');
+                return;
+            }
+            const link = document.createElement('a');
+            const truckId = document.getElementById('worker-truck-id').value || 'camion';
+            link.download = `ecobarrio-qr-${truckId}.png`;
+            link.href = dataUrl;
+            link.click();
+        }
+
+        function printQR() {
+            const dataUrl = getQRElementDataURL();
+            if (!dataUrl) {
+                showAlert('error', 'Sin Código QR', 'Primero genera un código QR para poder imprimirlo.', 'fa-exclamation-triangle');
+                return;
+            }
+            const truckId = document.getElementById('worker-truck-id').value || 'Camión';
+            const zone = document.getElementById('worker-zone').value || '';
+            const date = document.getElementById('worker-date').value || '';
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+        <!DOCTYPE html>
+        <html><head><title>QR EcoBarrio - ${truckId}</title></head>
+        <body style="text-align:center; font-family:Arial,sans-serif; padding:40px;">
+            <h2 style="color:#059669;">EcoBarrio - Reciclaje Vecinal</h2>
+            <img src="${dataUrl}" style="width:280px; height:280px; margin:20px 0;">
+            <p style="font-size:18px; font-weight:bold; margin:5px 0;">${truckId}</p>
+            <p style="font-size:14px; color:#666; margin:5px 0;">${zone}</p>
+            <p style="font-size:14px; color:#666; margin:5px 0;">${date}</p>
+            <p style="font-size:12px; color:#999; margin-top:20px;">Escanea este código con la app EcoBarrio</p>
+        </body></html>`);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => printWindow.print(), 250);
+        }
+
+        // ═══════════════════════════════════════════
+        // OTRAS FUNCIONES
+        // ═══════════════════════════════════════════
+        function requestPickup() {
+            showAlert('info', 'Recordatorio Activado', 'Recibirás una alerta en tu celular 15 minutos antes de que el camión recolector pase por tu cuadra.', 'fa-bell');
+        }
+
+        function redeemReward(cost, couponCode, storeName) {
+            if (ecoPoints >= cost) {
+                ecoPoints -= cost;
+                updatePointsDisplay();
+                showCouponModal(couponCode, storeName);
+            } else {
+                showAlert('error', 'Puntos Insuficientes', `Necesitas ${cost} puntos para este beneficio. Te faltan ${cost - ecoPoints} puntos.`, 'fa-exclamation-triangle');
+            }
+        }
+
+        function showAlert(type, title, message, icon) {
+            const modal = document.getElementById('alert-modal');
+            const content = document.getElementById('alert-content');
+            const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
+            content.innerHTML = `
+        <div class="text-center">
+            <div class="${colors[type]} rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-3"><i class="fas ${icon} text-white text-xl"></i></div>
+            <h3 class="text-lg font-bold text-gray-800 mb-1">${title}</h3>
+            <p class="text-gray-600 text-sm mb-4">${message}</p>
+            <button onclick="closeAlertModal()" class="w-full gradient-bg text-white py-2.5 px-4 rounded-xl font-bold text-sm hover:opacity-90 transition-all">Entendido</button>
+        </div>`;
+            modal.classList.remove('hidden');
+        }
+
+        function closeAlertModal() { document.getElementById('alert-modal').classList.add('hidden'); }
+        function showCouponModal(code, store) {
+            document.getElementById('coupon-code').textContent = code;
+            document.getElementById('coupon-store').textContent = `En ${store}`;
+            document.getElementById('coupon-modal').classList.remove('hidden');
+        }
+        function closeCouponModal() { document.getElementById('coupon-modal').classList.add('hidden'); }
+
+        window.onclick = function (event) {
+            if (event.target === document.getElementById('alert-modal')) closeAlertModal();
+            if (event.target === document.getElementById('coupon-modal')) closeCouponModal();
+        };
+    </script>
+</body>
+
+</html>
