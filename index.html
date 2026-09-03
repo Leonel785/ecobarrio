@@ -78,18 +78,18 @@
 
         .scanner-frame {
             position: absolute;
-            inset: 12%;
-            border: 2px solid rgba(16, 185, 129, 0.7);
-            border-radius: 16px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 210px;
+            height: 210px;
+            max-width: 70%;
+            max-height: 70%;
+            border: 3px solid #10b981;
+            border-radius: 20px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
             pointer-events: none;
-        }
-
-        .corner-marker {
-            position: absolute;
-            width: 28px;
-            height: 28px;
-            border-color: #10b981;
-            border-style: solid;
+            z-index: 10;
         }
 
         .video-container {
@@ -100,11 +100,12 @@
             border-radius: 20px;
             overflow: hidden;
             background: #000;
+            aspect-ratio: 3 / 4;
         }
 
         #video {
             width: 100%;
-            height: auto;
+            height: 100%;
             display: block;
             object-fit: cover;
         }
@@ -438,10 +439,6 @@
                     <div class="scanner-frame">
                         <div class="scan-line"></div>
                     </div>
-                    <div class="corner-marker top-[12%] left-[12%] border-t-4 border-l-4 rounded-tl-lg"></div>
-                    <div class="corner-marker top-[12%] right-[12%] border-t-4 border-r-4 rounded-tr-lg"></div>
-                    <div class="corner-marker bottom-[12%] left-[12%] border-b-4 border-l-4 rounded-bl-lg"></div>
-                    <div class="corner-marker bottom-[12%] right-[12%] border-b-4 border-r-4 rounded-br-lg"></div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2 mb-3">
@@ -1444,6 +1441,7 @@
                 document.getElementById('btn-switch-cam').classList.remove('hidden');
                 updateScanStatus('Escaneando... Apunta al código QR del camión', 'scanning');
                 scanLoop();
+                startZXingVideoScan();
             } catch (err) {
                 console.error('Camera Access Error:', err);
                 let msg = 'No se pudo acceder a la cámara. ';
@@ -1460,8 +1458,31 @@
             }
         }
 
+        function startZXingVideoScan() {
+            if (typeof ZXing !== 'undefined' && ZXing.BrowserQRCodeReader) {
+                try {
+                    if (!window._zxingVideoReader) {
+                        window._zxingVideoReader = new ZXing.BrowserQRCodeReader();
+                    }
+                    window._zxingVideoReader.decodeFromVideoElement(video, (result, err) => {
+                        if (scanning && result && result.getText()) {
+                            lastScannedData = result.getText();
+                            stopCamera();
+                            showScanResult(result.getText());
+                            updateScanStatus('¡Código QR detectado!', 'success');
+                        }
+                    });
+                } catch (e) {
+                    console.warn('ZXing video scan notice:', e);
+                }
+            }
+        }
+
         function stopCamera() {
             scanning = false;
+            if (window._zxingVideoReader) {
+                try { window._zxingVideoReader.reset(); } catch (e) { }
+            }
             if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
             if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
             if (video) video.srcObject = null;
