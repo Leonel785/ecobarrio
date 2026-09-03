@@ -1510,57 +1510,77 @@
             return null;
         }
 
-        async function scanLoop() {
+        let lastScanTime = 0;
+        let scanCycleCount = 0;
+
+        async function scanLoop(timestamp) {
             if (!scanning) return;
-            if (video && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
-                // 1. BarcodeDetector nativo
-                if ('BarcodeDetector' in window) {
-                    try {
-                        if (!window._barcodeDetector) {
-                            window._barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+
+            // Procesar cuadro cada 150ms (aprox 7 escaneos/segundo es óptimo para evitar lag y detectar al instante)
+            if (!timestamp || (timestamp - lastScanTime >= 150)) {
+                lastScanTime = timestamp || performance.now();
+                scanCycleCount++;
+
+                if (video && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+                    // 1. BarcodeDetector nativo (Acelerado por hardware)
+                    if ('BarcodeDetector' in window) {
+                        try {
+                            if (!window._barcodeDetector) {
+                                window._barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+                            }
+                            const barcodes = await window._barcodeDetector.detect(video);
+                            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                                lastScannedData = barcodes[0].rawValue;
+                                stopCamera();
+                                showScanResult(barcodes[0].rawValue);
+                                updateScanStatus('¡Código QR detectado!', 'success');
+                                return;
+                            }
+                        } catch (e) {
+                            // continuar
                         }
-                        const barcodes = await window._barcodeDetector.detect(video);
-                        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                            lastScannedData = barcodes[0].rawValue;
-                            stopCamera();
-                            showScanResult(barcodes[0].rawValue);
-                            updateScanStatus('¡Código QR detectado!', 'success');
-                            return;
-                        }
-                    } catch (e) {
-                        console.warn('BarcodeDetector video loop error:', e);
+                    }
+
+                    // 2. jsQR optimizado: re-escalado dinámico a máximo 640px (hasta 10x más rápido)
+                    const maxDim = 640;
+                    const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+                    const targetW = Math.round(video.videoWidth * scale);
+                    const targetH = Math.round(video.videoHeight * scale);
+
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                    ctx.drawImage(video, 0, 0, targetW, targetH);
+
+                    const imageData = ctx.getImageData(0, 0, targetW, targetH);
+                    const invertMode = (scanCycleCount % 3 === 0) ? 'attemptBoth' : 'dontInvert';
+                    let code = jsQR(imageData.data, targetW, targetH, { inversionAttempts: invertMode });
+
+                    if (code && code.data) {
+                        lastScannedData = code.data;
+                        stopCamera();
+                        showScanResult(code.data);
+                        updateScanStatus('¡Código QR detectado!', 'success');
+                        return;
+                    }
+
+                    // 3. Región Central ROI (Center 60%)
+                    const cropW = Math.round(targetW * 0.6);
+                    const cropH = Math.round(targetH * 0.6);
+                    const cropX = Math.round((targetW - cropW) / 2);
+                    const cropY = Math.round((targetH - cropH) / 2);
+                    const roiData = ctx.getImageData(cropX, cropY, cropW, cropH);
+                    code = jsQR(roiData.data, cropW, cropH, { inversionAttempts: 'attemptBoth' });
+
+                    if (code && code.data) {
+                        lastScannedData = code.data;
+                        stopCamera();
+                        showScanResult(code.data);
+                        updateScanStatus('¡Código QR detectado!', 'success');
+                        return;
                     }
                 }
-
-                // 2. jsQR en frame completo
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
-                if (code && code.data) {
-                    lastScannedData = code.data;
-                    stopCamera();
-                    showScanResult(code.data);
-                    updateScanStatus('¡Código QR detectado!', 'success');
-                    return;
-                }
-
-                // 3. jsQR en región central ROI (Center 65%)
-                const cropW = Math.round(canvas.width * 0.65);
-                const cropH = Math.round(canvas.height * 0.65);
-                const cropX = Math.round((canvas.width - cropW) / 2);
-                const cropY = Math.round((canvas.height - cropH) / 2);
-                const roiData = ctx.getImageData(cropX, cropY, cropW, cropH);
-                code = jsQR(roiData.data, cropW, cropH, { inversionAttempts: 'attemptBoth' });
-                if (code && code.data) {
-                    lastScannedData = code.data;
-                    stopCamera();
-                    showScanResult(code.data);
-                    updateScanStatus('¡Código QR detectado!', 'success');
-                    return;
-                }
             }
+
             rafId = requestAnimationFrame(scanLoop);
         }
 
@@ -1773,14 +1793,11 @@
             }
 
             const qrData = {
-                truckId: truckId,
-                zone: zone,
-                date: date,
-                shift: shift,
-                driver: driver || 'No especificado',
-                truckLat: truckLocation ? truckLocation.lat : null,
-                truckLng: truckLocation ? truckLocation.lng : null,
-                generatedAt: new Date().toISOString(),
+                id: truckId,
+                z: zone,
+                d: date,
+                s: shift,
+                dr: driver || 'No especificado',
                 app: 'EcoBarrio'
             };
             const qrString = JSON.stringify(qrData);
@@ -1788,7 +1805,7 @@
             const displayEl = document.getElementById('qrcode-display');
             displayEl.innerHTML = '';
 
-            // Opción 1: Librería qrcode-generator (Kazuhiko Arase) con renderizado directo a canvas sin artefactos
+            // Opción 1: Librería qrcode-generator (Kazuhiko Arase) con renderizado directo a canvas de alta definición
             if (typeof qrcode === 'function') {
                 try {
                     const qr = qrcode(0, 'M');
@@ -1796,8 +1813,8 @@
                     qr.make();
 
                     const moduleCount = qr.getModuleCount();
-                    const cellSize = 6;
-                    const margin = 16;
+                    const cellSize = 8;
+                    const margin = 20;
                     const canvasSize = moduleCount * cellSize + margin * 2;
 
                     const canvasEl = document.createElement('canvas');
